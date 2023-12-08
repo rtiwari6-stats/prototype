@@ -51,7 +51,7 @@
             // start recording with a click of the button
             button.addEventListener('click', startRecording);
 
-            // the mediaRecord object that captures the stream
+            // mediaRecorder object that captures the stream
             mediaRecorder = new MediaRecorder(stream, options);
 
             // Record the timestamp (start of recording) when MediaRecorder's start event is triggered
@@ -77,7 +77,7 @@
                     lastModified: Date.now()
                 });
 
-                // calculate duration of the recording
+                // calculate duration of the recording in seconds
                 var duration = (endTime - startTime)/1000;
                 // Display duration on web-page (add to HTML)
                 document.getElementById("duration").innerHTML = duration;
