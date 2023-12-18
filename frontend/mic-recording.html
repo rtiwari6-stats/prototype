@@ -28,10 +28,16 @@
         var mediaRecorder = null;
         var startTime = null;
         var endTime = null;
+        var lastDetectedTime = null;
+        const VOICE_MIN_DECIBELS      = -35;
+        var duration = 0;
+        var soundDetected = false;
+        var DELAY_BETWEEN_DIALOGS   = 3000; // set 3 sec delay as benchmark
 
         // start the recording
         const startRecording = function() {
             mediaRecorder.start();
+            button.textContent = 'Stop recording';
             button.classList.toggle('btn-danger');
             button.removeEventListener('click', startRecording);
             button.addEventListener('click', stopRecording);
@@ -68,6 +74,8 @@
             mediaRecorder.addEventListener('stop', function() {
                 console.dir(buffer);
 
+                if(!soundDetected) return;
+
                 // Record the timestamp (end of recording) when MediaRecorder's stop event is triggered
                 endTime = new Date().valueOf();
 
@@ -75,10 +83,10 @@
                 const file = new File(buffer, 'audio.webm', {
                     type: 'audio/webm',
                     lastModified: Date.now()
-                });
+                });          
 
                 // calculate duration of the recording in seconds
-                var duration = (endTime - startTime)/1000;
+                duration = duration + (endTime - lastDetectedTime)/1000;
                 // Display duration on web-page (add to HTML)
                 document.getElementById("duration").innerHTML = duration;
 
@@ -90,8 +98,48 @@
                 document.querySelector('#playlist').appendChild(li);
                 buffer.length = 0; // empty the buffer for the next one
                 duration = 0; // reset recording duration 
+                soundDetected = false; // reset sound detection
+            });   
+            
+            const audioContext = new AudioContext();
+            const audioStreamSource = audioContext.createMediaStreamSource(stream);
+            const analyser = audioContext.createAnalyser();
+            analyser.minDecibels = VOICE_MIN_DECIBELS;
+            audioStreamSource.connect(analyser);
 
-            });          
+            const bufferLength = analyser.frequencyBinCount;
+            const domainData = new Uint8Array(bufferLength);
+
+            soundDetected = false;
+            const detectSound = () => {
+                //if (soundDetected) {
+                //    return
+                //}
+                time = new Date();
+                currentTime = time.getTime();
+                //a dialog detected:
+                if( soundDetected === true &&
+                    currentTime > lastDetectedTime + DELAY_BETWEEN_DIALOGS
+                  )
+                {
+                    mediaRecorder.stop();
+                    return;
+                }
+            
+                analyser.getByteFrequencyData(domainData); 
+
+                for (let i = 0; i < bufferLength; i++) {
+                    const value = domainData[i];
+
+                    if (domainData[i] > 0) {
+                        soundDetected = true;
+                        time = new Date();
+                        lastDetectedTime = time.getTime();
+                    }
+                }
+                window.requestAnimationFrame(detectSound);
+            };
+            window.requestAnimationFrame(detectSound);
         };
 
         // init the stream from the audio device
