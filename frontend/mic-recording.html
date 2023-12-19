@@ -31,13 +31,14 @@
         var lastDetectedTime = null;
         const VOICE_MIN_DECIBELS      = -35;
         var duration = 0;
+        var total = 0;
         var soundDetected = false;
         var DELAY_BETWEEN_DIALOGS   = 3000; // set 3 sec delay as benchmark
 
         // start the recording
         const startRecording = function() {
             mediaRecorder.start();
-            button.textContent = 'Stop recording';
+            button.textContent = 'Mute';
             button.classList.toggle('btn-danger');
             button.removeEventListener('click', startRecording);
             button.addEventListener('click', stopRecording);
@@ -46,7 +47,7 @@
         // stop the recording
         const stopRecording = function() {
             mediaRecorder.stop();
-            button.textContent = 'Start recording';
+            button.textContent = 'Unmute';
             button.classList.toggle('btn-danger');
             button.removeEventListener('click', stopRecording);
             button.addEventListener('click', startRecording);
@@ -63,6 +64,7 @@
             // Record the timestamp (start of recording) when MediaRecorder's start event is triggered
             mediaRecorder.addEventListener('start', () => {
                 startTime = new Date().valueOf();
+                //window.requestAnimationFrame(detectSound);
             });
 
             // catches stream of bytearray
@@ -74,10 +76,10 @@
             mediaRecorder.addEventListener('stop', function() {
                 console.dir(buffer);
 
-                if(!soundDetected) return;
+               // if(!soundDetected) return;
 
                 // Record the timestamp (end of recording) when MediaRecorder's stop event is triggered
-                endTime = new Date().valueOf();
+                endTime = new Date().getTime();
 
                 //create a file from the stream buffer
                 const file = new File(buffer, 'audio.webm', {
@@ -86,9 +88,16 @@
                 });          
 
                 // calculate duration of the recording in seconds
-                duration = duration + (endTime - lastDetectedTime)/1000;
-                // Display duration on web-page (add to HTML)
-                document.getElementById("duration").innerHTML = duration;
+                //duration = duration + (endTime - lastDetectedTime)/1000;
+                if(lastDetectedTime - startTime <= DELAY_BETWEEN_DIALOGS){
+                   lastDetectedTime = startTime; // last detected time isn't too different from start time
+               }
+                if(soundDetected){
+                    duration = (endTime - lastDetectedTime); //there was an ongoing dialog. 
+                }
+                
+                total += duration;
+                document.getElementById("duration").innerHTML = total/1000;
 
                 // display the file via an Audio object
                 const li = document.createElement('li');
@@ -111,35 +120,49 @@
             const domainData = new Uint8Array(bufferLength);
 
             soundDetected = false;
-            const detectSound = () => {
+            const detectSound = function() {
                 //if (soundDetected) {
                 //    return
                 //}
-                time = new Date();
-                currentTime = time.getTime();
+               time = new Date(); 
+               currentTime = time.getTime();
+
+               if(lastDetectedTime - startTime <= DELAY_BETWEEN_DIALOGS){
+                   lastDetectedTime = startTime; // last detected time isn't too different from start time
+               }
+
                 //a dialog detected:
-                if( soundDetected === true &&
-                    currentTime > lastDetectedTime + DELAY_BETWEEN_DIALOGS
-                  )
-                {
-                    mediaRecorder.stop();
-                    return;
+                if(soundDetected)
+                {                    
+                    duration = (currentTime - lastDetectedTime); //ongoing dialog, overwrite.                    
                 }
             
                 analyser.getByteFrequencyData(domainData); 
 
+                var foundSound = false;
                 for (let i = 0; i < bufferLength; i++) {
                     const value = domainData[i];
 
-                    if (domainData[i] > 0) {
+                    if (domainData[i] > 0) { // detect a spike
+                        time = new Date(); 
+                        if(!soundDetected) { // transition to sound detected
+                            lastDetectedTime = time.getTime(); // move to current
+                        }
                         soundDetected = true;
-                        time = new Date();
-                        lastDetectedTime = time.getTime();
-                    }
+                        console.log("Sound detected")
+                        foundSound = true;                                               
+                    }                                      
                 }
-                window.requestAnimationFrame(detectSound);
+                if(!foundSound){  // did not find any sound in this chunk which means dialog ended
+                    soundDetected = false;
+                    console.log("Sound Not detected")
+                    total += duration;
+                    duration = 0; // reset dialog length
+                }
+                console.log(total)
+                window.requestAnimationFrame(detectSound); // loop
             };
-            window.requestAnimationFrame(detectSound);
+            window.requestAnimationFrame(detectSound); // start loop
         };
 
         // init the stream from the audio device
